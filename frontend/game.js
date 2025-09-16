@@ -259,26 +259,3 @@ window.addEventListener('DOMContentLoaded', ()=>{
   initRoom();
   document.getElementById('mini-username').addEventListener('click', showProfileScreen);
 });
-
-// Đăng ký check:
-function validateUsername(username){
-  return /^[a-zA-Z0-9]{4,30}$/.test(username);
-}
-function validateEmail(email){
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-function validatePassword(password){
-  return (
-    typeof password === 'string'
-    && password.length >= 8
-    && /[A-Z]/.test(password)
-    && /[a-z]/.test(password)
-    && /[0-9]/.test(password)
-    && /[^A-Za-z0-9]/.test(password)
-  );
-}
-
-// ...khi user submit:
-if(!validateUsername(username)) return showNotify('Tên 4-30 ký tự chữ/số không dấu!');
-if(!validateEmail(email)) return showNotify('Email không hợp lệ!');
-if(!validatePassword(password)) return showNotify('Mật khẩu mạnh: đủ 8 ký tự, hoa thường số, ký tự đặc biệt!');
