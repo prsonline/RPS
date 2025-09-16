@@ -53,16 +53,16 @@ async function loginUser(username, password) {
   });
   const data = await res.json();
   if (data.error) { notify(data.error); return false; }
-  // Đảm bảo mọi field đều có, bao gồm id & avatar nếu có
+  // Lưu ĐẦY ĐỦ user info
   window.localUser = {
-    id: data.id || data._id || '',        // hỗ trợ cả id hoặc _id
+    id: data.id || data._id || '',        // id từ backend
     username: data.username || '',
-    point: data.point || 0,
+    point: (typeof data.point === 'number') ? data.point : 0,
     guest: false,
     avatar: data.avatar || '',
     token: data.token
   };
-  console.log("===> Login OK", window.localUser);
+  console.log("===> Login OK", window.localUser, data); // Log để kiểm tra
   saveLocalUser();
   updateMiniUser();
   connectSocket();
@@ -96,7 +96,6 @@ async function changeAvatar(newAvatarUrl) {
   saveLocalUser(); 
   updateMiniUser();
   notify('Đổi avatar thành công!');
-  // Không cần reload lại trang, mini header sẽ hiện avatar luôn
 }
 
 // ==== User trạng thái ==== //
@@ -197,7 +196,7 @@ function showProfileScreen() {
       <button id="btn-do-change-name" class="btn-small">Đổi</button>
     </div>
     <div><b>ID:</b> <span id="profile-user-id">${localUser.id || ''}</span></div>
-    <div><b>Điểm:</b> ${localUser.point || 0}</div>
+    <div><b>Điểm:</b> ${typeof localUser.point === 'number' ? localUser.point : 0}</div>
     <div><b>Chế độ:</b> ${localUser.guest ? 'Khách' : 'Thành viên'}</div>
     <div><b>Số vật phẩm:</b> ${(localUser.items || []).length}</div>
   `;
