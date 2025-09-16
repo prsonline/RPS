@@ -4,6 +4,7 @@ function showScreen(id) {
   for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
   document.getElementById(id).classList.remove('hidden');
 }
+window.onGoogleSignIn = function(){}; // hoặc code xử lý thực đăng nhập Google
 
 // ==== VALIDATORS ==== //
 function validateUsername(username) {
