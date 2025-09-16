@@ -207,6 +207,24 @@ function showFinalResult() {
 // ======== Hồ sơ cá nhân & Item ========
 function showProfileScreen() {
   showScreen('profile-screen');
+   showScreen('profile-screen');
+  document.getElementById('profile-block').innerHTML = `
+    <div><b>Tên:</b> <input type="text" id="input-change-name" maxlength="16" value="${localUser.username || ''}">
+      <button id="btn-do-change-name" class="btn-small">Đổi</button>
+    </div>
+    <div><b>ID:</b> <span id="profile-user-id">${localUser.userId || localUser.id}</span></div>
+    <div><b>Điểm:</b> ${localUser.point || 0}</div>
+    <div><b>Chế độ:</b> ${localUser.guest ? 'Khách' : 'Thành viên'}</div>
+    <div><b>Số vật phẩm:</b> ${(localUser.items || []).length}</div>
+  `;
+  document.getElementById('input-change-name').onchange = function(e) {
+    localUser.username = this.value.trim().slice(0, 16);
+  }
+  document.getElementById('btn-do-change-name').onclick = function() {
+    localUser.username = document.getElementById('input-change-name').value.trim().slice(0, 16) || localUser.username;
+    saveLocalUser(); updateMiniUser();
+    notify('Đã đổi tên thành công!');
+  };
   let block = '';
   block += `<div><b>Tên:</b> ${localUser.username||'Chưa đăng nhập'}</div>`;
   block += `<div><b>Điểm:</b> ${localUser.point||0}</div>`;
