@@ -3,7 +3,7 @@ const getBackendURL = () => {
     if (window.location.hostname === 'localhost') {
         return 'http://localhost:3001';
     }
-    return 'https://rps-backend.onrender.com'; // Sẽ update sau
+    return 'https://rps-backend-pm3s.onrender.com/'; // Sẽ update sau
 };
 
 // Initialize
