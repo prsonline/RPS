@@ -1,5 +1,10 @@
 const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Thay đúng backend bạn deploy
 
+function showScreen(id) {
+  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
+
 // ==== VALIDATORS ==== //
 function validateUsername(username) {
   return /^[a-zA-Z0-9]{4,30}$/.test(username);
