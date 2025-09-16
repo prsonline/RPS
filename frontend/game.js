@@ -1,5 +1,5 @@
 // ==== CONFIG BACKEND ====
-const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Sửa đúng backend của bạn
+const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Sửa đúng backend của bạn nếu khác!
 
 // ==== VALIDATORS ==== //
 function validateUsername(username) {
@@ -25,10 +25,29 @@ function notify(msg, timeout=2000) {
   setTimeout(()=>n.remove(), timeout);
 }
 
-// ==== SHOW SCREEN ==== //
-function showScreen(id) {
-  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
-  document.getElementById(id).classList.remove('hidden');
+// ==== localUser LƯU GLOBALLY TRÊN window (không bao giờ ghi đè bằng let/const localUser) ==== //
+window.localUser = {}; // luôn dùng window.localUser
+
+function saveLocalUser() {
+  if (window.localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(window.localUser));
+  else localStorage.setItem('rps-user', JSON.stringify(window.localUser));
+}
+function loadLocalUser() {
+  let x = sessionStorage.getItem('rps-user') || localStorage.getItem('rps-user');
+  if(x) try {window.localUser = JSON.parse(x);} catch{window.localUser = {};}
+  if(!window.localUser || typeof window.localUser !== 'object') window.localUser = {};
+  if(typeof window.localUser.point !== 'number') window.localUser.point = 0;
+  if(!window.localUser.username) window.localUser.username = '';
+  if(!window.localUser.items) window.localUser.items = [];
+}
+function updateMiniUser() {
+  let text = window.localUser?.username ? `👑 ${window.localUser.username}` : '';
+  if(window.localUser.avatar) text = `<img src="${window.localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${window.localUser.username}`;
+  document.getElementById('mini-username').innerHTML = text;
+  document.getElementById('mini-point').textContent = (typeof window.localUser.point === 'number') ? `★ ${window.localUser.point}` : '';
+  // Nút đăng xuất chỉ hiện khi user đã login (không phải guest và phải có username thực)
+  const showLogout = window.localUser && !window.localUser.guest && !!window.localUser.username;
+  document.getElementById('btn-logout').classList.toggle('hidden', !showLogout);
 }
 
 // ==== APIs kết nối backend ==== //
@@ -53,23 +72,23 @@ async function loginUser(username, password) {
   });
   const data = await res.json();
   if (data.error) { notify(data.error); return false; }
-  // Lưu ĐẦY ĐỦ user info
+  // Lưu ĐẦY ĐỦ user info vào window.localUser
   window.localUser = {
-    id: data.id || data._id || '',        // id từ backend
+    id: data.id || data._id || '',
     username: data.username || '',
     point: (typeof data.point === 'number') ? data.point : 0,
     guest: false,
     avatar: data.avatar || '',
+    items: data.items || [],
     token: data.token
   };
-  console.log("===> Login OK", window.localUser, data); // Log để kiểm tra
   saveLocalUser();
   updateMiniUser();
   connectSocket();
   return true;
 }
 async function changeUsername(newName) {
-  const token = localStorage.getItem('rps-token');
+  const token = window.localUser.token;
   const res = await fetch(BACKEND_URL + '/api/user/change-name', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -77,14 +96,14 @@ async function changeUsername(newName) {
   });
   const data = await res.json();
   if(data.error) return notify(data.error);
-  localUser.username = newName;
+  window.localUser.username = newName;
   saveLocalUser();
   updateMiniUser();
   notify('Đổi tên thành công!');
-  document.getElementById('input-change-name').value = localUser.username;
+  document.getElementById('input-change-name').value = window.localUser.username;
 }
 async function changeAvatar(newAvatarUrl) {
-  const token = localStorage.getItem('rps-token');
+  const token = window.localUser.token;
   const res = await fetch(BACKEND_URL + '/api/auth/avatar', {
     method: 'POST',
     headers:{'Content-Type':'application/json'},
@@ -98,28 +117,6 @@ async function changeAvatar(newAvatarUrl) {
   notify('Đổi avatar thành công!');
 }
 
-// ==== User trạng thái ==== //
-let localUser = {};
-function saveLocalUser() {
-  if (localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
-  else localStorage.setItem('rps-user', JSON.stringify(localUser));
-}
-function loadLocalUser() {
-  let x = sessionStorage.getItem('rps-user') || localStorage.getItem('rps-user');
-  if(x) try {localUser = JSON.parse(x);} catch{} else localUser = {};
-  if(!localUser.point) localUser.point = 0;
-  if(!localUser.username) localUser.username = '';
-}
-function updateMiniUser() {
-  let text = localUser?.username ? `👑 ${localUser.username}` : '';
-  if(localUser.avatar) text = `<img src="${localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${localUser.username}`;
-  document.getElementById('mini-username').innerHTML = text;
-  document.getElementById('mini-point').textContent = (typeof localUser.point !== 'undefined' && localUser.point !== null) ? `★ ${localUser.point}` : '';
-  // Nút đăng xuất chỉ hiện khi user đã login (không phải guest và phải có username thực)
-  const showLogout = localUser && !localUser.guest && !!localUser.username;
-  document.getElementById('btn-logout').classList.toggle('hidden', !showLogout);
-}
-
 // ==== Socket.io trạng thái online ==== //
 let socket = null;
 function connectSocket() {
@@ -127,9 +124,9 @@ function connectSocket() {
   if (window.socket) window.socket.disconnect();
   window.socket = io(BACKEND_URL, {transports:['websocket','polling']});
   socket = window.socket;
-  socket.emit('user-online', { userId: localUser.id });
+  socket.emit('user-online', { userId: window.localUser.id });
   window.addEventListener('beforeunload', ()=>{
-    socket.emit('user-offline', { userId: localUser.id });
+    socket.emit('user-offline', { userId: window.localUser.id });
   });
 }
 
@@ -139,7 +136,7 @@ function initAuth() {
   document.getElementById('btn-register').onclick = ()=> showScreen('register-screen');
   document.getElementById('btn-back-login').onclick = ()=> showScreen('auth-screen');
   document.getElementById('btn-guest').onclick = ()=>{
-    localUser = { id:'guest'+(Math.random()*1e5|0), username: 'Guest'+(Math.random()*1e4|0), guest: true, point: 0, items: [] };
+    window.localUser = { id:'guest'+(Math.random()*1e5|0), username: 'Guest'+(Math.random()*1e4|0), guest: true, point: 0, items: [] };
     saveLocalUser(); updateMiniUser();
     showScreen('main-menu');
     notify('Chơi với tư cách khách (tạm thời)');
@@ -153,7 +150,7 @@ function initAuth() {
     const ok = await loginUser(username, password);
     if(ok) {
       showScreen('main-menu'); 
-      updateMiniUser(); // đảm bảo luôn update lại giao diện mini sau login
+      updateMiniUser();
     }
   };
   document.getElementById('register-form').onsubmit = async function(e) {
@@ -168,9 +165,9 @@ function initAuth() {
     if (ok) showScreen('auth-screen');
   };
   document.getElementById('btn-logout').onclick = ()=>{
-    if(localUser.guest) sessionStorage.removeItem('rps-user');
+    if(window.localUser.guest) sessionStorage.removeItem('rps-user');
     else localStorage.removeItem('rps-user');
-    localUser = {}; updateMiniUser();
+    window.localUser = {}; updateMiniUser();
     showScreen('auth-screen');
   };
 }
@@ -188,19 +185,21 @@ function initMenu() {
 // ==== Đổi tên, avatar ==== //
 function showProfileScreen() {
   showScreen('profile-screen');
-  console.log("===> Show Profile", localUser);
+  // lấy đúng window.localUser và không tạo biến cục bộ nào localUser ở đây!
+  const u = window.localUser;
+  console.log("===> Show Profile", u);
   document.getElementById('profile-block').innerHTML = `
     <div>
       <b>Tên:</b> 
-      <input type="text" id="input-change-name" maxlength="30" minlength="4" value="${localUser.username || ''}">
+      <input type="text" id="input-change-name" maxlength="30" minlength="4" value="${u.username || ''}">
       <button id="btn-do-change-name" class="btn-small">Đổi</button>
     </div>
-    <div><b>ID:</b> <span id="profile-user-id">${localUser.id || ''}</span></div>
-    <div><b>Điểm:</b> ${typeof localUser.point === 'number' ? localUser.point : 0}</div>
-    <div><b>Chế độ:</b> ${localUser.guest ? 'Khách' : 'Thành viên'}</div>
-    <div><b>Số vật phẩm:</b> ${(localUser.items || []).length}</div>
+    <div><b>ID:</b> <span id="profile-user-id">${u.id || ''}</span></div>
+    <div><b>Điểm:</b> ${typeof u.point === 'number' ? u.point : 0}</div>
+    <div><b>Chế độ:</b> ${u.guest ? 'Khách' : 'Thành viên'}</div>
+    <div><b>Số vật phẩm:</b> ${(u.items || []).length}</div>
   `;
-  let itemHtml = '', rewardInventory = localUser.items||[];
+  let itemHtml = '', rewardInventory = u.items||[];
   for(const item of rewardInventory) itemHtml += `<span class="item-card">${item}</span>`;
   document.getElementById('item-inventory').innerHTML = itemHtml || '<span>Chưa có vật phẩm nào!</span>';
   document.getElementById('btn-profile-back').onclick = ()=>showScreen('main-menu');
@@ -209,7 +208,7 @@ function showProfileScreen() {
     const newName = document.getElementById('input-change-name').value.trim();
     if (!validateUsername(newName)) return notify('Tên: 4-30 ký tự và chỉ chữ số!');
     await changeUsername(newName);
-    document.getElementById('input-change-name').value = localUser.username;
+    document.getElementById('input-change-name').value = window.localUser.username;
   };
   document.getElementById('btn-upload-avatar').onclick = async function() {
     const url = document.getElementById('input-avatar-url').value.trim();
@@ -289,14 +288,14 @@ function showFinalResult() {
   let reward='';
   if(gameSession.me>gameSession.op) {
     const point = 30+10*Math.random()|0;
-    localUser.point = (localUser.point||0) + point;
+    window.localUser.point = (window.localUser.point||0) + point;
     let item = ['Búa vàng','Bao may mắn','Kéo siêu tốc'][Math.random()*3|0];
-    rewardInventory.push(item); localUser.items = rewardInventory;
+    rewardInventory.push(item); window.localUser.items = rewardInventory;
     saveLocalUser(); updateMiniUser();
     reward = `<div>🎁 Nhận <b>${point}</b> điểm & vật phẩm: <span class="item-card">${item}</span></div>`;
   } else {
     reward = `Bạn nhận <b>10 điểm</b> an ủi!`;
-    localUser.point = (localUser.point||0)+10; saveLocalUser(); updateMiniUser();
+    window.localUser.point = (window.localUser.point||0)+10; saveLocalUser(); updateMiniUser();
   }
   document.getElementById('reward-list').innerHTML = reward;
   document.getElementById('btn-back-menu').onclick = ()=>showScreen('main-menu');
