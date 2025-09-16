@@ -1,10 +1,5 @@
-const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Thay đúng backend bạn deploy
-
-function showScreen(id) {
-  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
-  document.getElementById(id).classList.remove('hidden');
-}
-window.onGoogleSignIn = function(){}; // hoặc code xử lý thực đăng nhập Google
+// ==== CONFIG BACKEND ====
+const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Sửa đúng backend của bạn
 
 // ==== VALIDATORS ==== //
 function validateUsername(username) {
@@ -23,14 +18,20 @@ function validatePassword(password) {
     && /[^A-Za-z0-9]/.test(password)
   );
 }
-function notify(msg, timeout=2400) {
+function notify(msg, timeout=2000) {
   const n = document.createElement('div');
   n.className='notify-message'; n.innerHTML=msg;
   document.getElementById('notify').appendChild(n);
   setTimeout(()=>n.remove(), timeout);
 }
 
-//==== APIs để call backend ===//
+// ==== SHOW SCREEN ==== //
+function showScreen(id) {
+  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
+
+// ==== APIs kết nối backend ==== //
 async function registerUser(username, email, password) {
   try {
     const res = await fetch(BACKEND_URL + '/api/auth/register', {
@@ -91,6 +92,7 @@ async function changeAvatar(newAvatarUrl) {
 }
 
 // ==== User trạng thái ==== //
+let localUser = {};
 function saveLocalUser() {
   if(localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
   else localStorage.setItem('rps-user', JSON.stringify(localUser));
@@ -106,10 +108,11 @@ function updateMiniUser() {
   if(localUser.avatar) text = `<img src="${localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${localUser.username}`;
   document.getElementById('mini-username').innerHTML = text;
   document.getElementById('mini-point').textContent = typeof localUser.point !== 'undefined' ? `★ ${localUser.point}` : '';
-  document.getElementById('btn-logout').classList.toggle('hidden', localUser.guest);
+  document.getElementById('btn-logout').classList.toggle('hidden', !!localUser.guest);
 }
 
 // ==== Socket.io trạng thái online ==== //
+let socket = null;
 function connectSocket() {
   if (!window.localUser?.id) return;
   if (window.socket) window.socket.disconnect();
@@ -170,7 +173,7 @@ function initMenu() {
   document.getElementById('btn-profile').onclick = showProfileScreen;
 }
 
-// ==== Đổi tên/Avatar ==== //
+// ==== Đổi tên, avatar ==== //
 function showProfileScreen() {
   showScreen('profile-screen');
   document.getElementById('profile-block').innerHTML = `
@@ -203,14 +206,98 @@ function showProfileScreen() {
   };
 }
 
-// ==== Các phần chơi game, tạo phòng, PvP, Reward... giữ logic cũ như bản trước ==== //
-// ... Bạn giữ nguyên mã startBotMode, startPvpGame, startGame, renderGame, playerMove ... như phiên bản đã gửi trước.
+// ==== GAME LOGIC (DEMO) ==== //
+let curGameType = '', gameSession = {}, curRoomId = '', rewardInventory = [];
+function startBotMode() {
+  curGameType = 'bot';
+  gameSession = { me:0, op:0, round:1, total:3, battle:[], opName:'BOT' };
+  notify('Đang chơi với máy!');
+  startGame();
+}
+function startPvpGame() {
+  curGameType = 'pvp';
+  gameSession = { me:0, op:0, round:1, total:3, battle:[], opName:'Đối thủ' };
+  startGame();
+}
+function startGame() {
+  showScreen('game-screen'); renderGame();
+  document.querySelectorAll('.choice-btn').forEach(btn=>{
+    btn.disabled = false; btn.classList.remove('selected');
+    btn.onclick = ()=>playerMove(btn.dataset.choice);
+  });
+  document.getElementById('btn-leave-game').onclick = ()=>showScreen('main-menu');
+  document.getElementById('vs-title').textContent = `Bạn vs ${gameSession.opName}`;
+  document.getElementById('round-result-msg').textContent = '';
+}
+function renderGame() {
+  document.getElementById('you-score').textContent = gameSession.me;
+  document.getElementById('op-score').textContent = gameSession.op;
+  document.getElementById('round-info').textContent = `Ván ${gameSession.round}/${gameSession.total}`;
+}
+function playerMove(myChoice) {
+  document.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.choice === myChoice);
+    btn.disabled = true;
+  });
+  let opChoice = (curGameType ==='bot')
+      ? ['rock','paper','scissors'][Math.random()*3|0]
+      : ['rock','paper','scissors'][Math.random()*3|0];
+  setTimeout(()=>{ showResult(myChoice, opChoice); }, 600);
+}
+function showResult(my, op) {
+  const map = { rock:'✊', paper:'✋', scissors:'✌️' };
+  let result='';
+  if(my===op) result='Hòa!';
+  else if((my==='rock'&&op==='scissors')||(my==='scissors'&&op==='paper')||(my==='paper'&&op==='rock')) {
+    result='Bạn thắng!'; gameSession.me++;
+  } else { result='Bạn thua!'; gameSession.op++; }
+  gameSession.battle.push({my, op, result});
+  document.getElementById('round-result-msg').textContent = `Bạn: ${map[my]}  – ${map[op]}  ${gameSession.opName}: ${result}`;
+  renderGame();
+  setTimeout(()=>{
+    if(gameSession.me > gameSession.total/2 || gameSession.op > gameSession.total/2 || gameSession.round===gameSession.total) {
+      showFinalResult();
+    } else {
+      gameSession.round++;
+      renderGame();
+      document.getElementById('round-result-msg').textContent='';
+      document.querySelectorAll('.choice-btn').forEach(btn=>{ btn.disabled = false; btn.classList.remove('selected'); });
+    }
+  },1500);
+}
+function showFinalResult() {
+  showScreen('game-result');
+  let msg='';
+  if(gameSession.me>gameSession.op) msg='🏆 Bạn chiến thắng!';
+  else if(gameSession.op>gameSession.me) msg='😢 Thua cuộc!';
+  else msg='🤝 Hoà!';
+  document.getElementById('game-final-title').textContent = msg;
+  document.getElementById('game-final-score').textContent = `Tỷ số: ${gameSession.me} - ${gameSession.op}`;
+  let reward='';
+  if(gameSession.me>gameSession.op) {
+    const point = 30+10*Math.random()|0;
+    localUser.point = (localUser.point||0) + point;
+    let item = ['Búa vàng','Bao may mắn','Kéo siêu tốc'][Math.random()*3|0];
+    rewardInventory.push(item); localUser.items = rewardInventory;
+    saveLocalUser(); updateMiniUser();
+    reward = `<div>🎁 Nhận <b>${point}</b> điểm & vật phẩm: <span class="item-card">${item}</span></div>`;
+  } else {
+    reward = `Bạn nhận <b>10 điểm</b> an ủi!`;
+    localUser.point = (localUser.point||0)+10; saveLocalUser(); updateMiniUser();
+  }
+  document.getElementById('reward-list').innerHTML = reward;
+  document.getElementById('btn-back-menu').onclick = ()=>showScreen('main-menu');
+  document.getElementById('btn-play-again').onclick = ()=>{  if(curGameType==='bot') startBotMode(); else startPvpGame(); };
+}
 
+// ==== KHỞI ĐỘNG APP ==== //
 window.addEventListener('DOMContentLoaded', ()=>{
   loadLocalUser();
   updateMiniUser();
   initAuth();
   initMenu();
-  // ... các sự kiện khởi tạo phòng, game còn lại ...
   document.getElementById('mini-username').addEventListener('click', showProfileScreen);
 });
+
+// ==== Google Sign-In callback (nếu không dùng xóa đi) ==== //
+window.onGoogleSignIn = function(){};
