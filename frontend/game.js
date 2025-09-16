@@ -1,80 +1,112 @@
-// ======== Cài đặt kết nối socket.io backend ===========
-const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // <--- Cập nhật đúng backend của bạn!
-// const BACKEND_URL = 'http://localhost:3001';
+const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Update đúng backend của bạn!
 
 let socket;
-let localUser = {}; // user hiện tại (login hoặc guest)
+let localUser = {};
 let curRoomId = '';
-let curGameType = ''; // 'bot' | 'pvp'
-let gameSession = {}; // lưu version hiện tại của trận đấu
-let rewardInventory = []; // item nhận được, demo lưu localStorage
+let curGameType = '';
+let gameSession = {};
+let rewardInventory = [];
 
-// ======== Helper UI ===========
 function showScreen(id) {
   for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
   document.getElementById(id).classList.remove('hidden');
 }
-function notify(msg, timeout=2200) {
+function notify(msg, timeout=2100) {
   const n = document.createElement('div');
   n.className='notify-message'; n.innerHTML=msg;
   document.getElementById('notify').appendChild(n);
   setTimeout(()=>n.remove(), timeout);
 }
 function updateMiniUser() {
-  document.getElementById('mini-username').textContent = localUser?.username ? `👑 ${localUser.username}` : '';
+  let text = localUser?.username ? `👑 ${localUser.username}` : '';
+  if(localUser.avatar) text = `<img src="${localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${localUser.username}`;
+  document.getElementById('mini-username').innerHTML = text;
   document.getElementById('mini-point').textContent = typeof localUser.point !== 'undefined' ? `★ ${localUser.point}` : '';
-}
-function saveLocalUser() {
-  window.localStorage.setItem('rps-user', JSON.stringify(localUser));
-}
-function loadLocalUser() {
-  const x = window.localStorage.getItem('rps-user');
-  if(x) try { localUser = JSON.parse(x); } catch{} else localUser = {};
-  if(!localUser.point) localUser.point = 0;
+  document.getElementById('btn-logout').classList.toggle('hidden', !localUser || localUser.guest);
 }
 
-// ======== Đăng ký/Đăng nhập & Guest ===========
+function saveLocalUser() {
+  if(localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
+  else localStorage.setItem('rps-user', JSON.stringify(localUser));
+}
+function loadLocalUser() {
+  let x = sessionStorage.getItem('rps-user');
+  if (!x) x = localStorage.getItem('rps-user');
+  if(x) try { localUser = JSON.parse(x); } catch{} else localUser = {};
+  if(!localUser.point) localUser.point = 0;
+  if(!localUser.userId) localUser.userId = randomUserId();
+  rewardInventory = localUser.items || [];
+}
+function randomUserId() {
+  return (Date.now() + '' + (Math.random()*1e6|0)).slice(0, 10);
+}
+
+function createGuestUser() {
+  return {
+    userId: randomUserId(),
+    id: null,
+    username: 'Guest' + (Math.random() * 1e4 | 0),
+    guest: true,
+    point: 0,
+    items: []
+  }
+}
+
+// ==== Google OAuth2 Sign in Handler
+window.onGoogleSignIn = function(response) {
+  const payload = JSON.parse(atob(response.credential.split('.')[1]));
+  localUser = {
+    id: 'gg-' + payload.sub,
+    userId: payload.sub,
+    username: payload.name,
+    email: payload.email,
+    avatar: payload.picture,
+    guest: false,
+    point: 100,
+    items: []
+  };
+  saveLocalUser(); updateMiniUser();
+  showScreen('main-menu');
+  notify('Đăng nhập Gmail thành công!');
+};
+
+// ==== Đăng ký/Đăng nhập & Guest
 function initAuth() {
   showScreen('auth-screen');
   document.getElementById('btn-register').onclick = ()=>{ showScreen('register-screen'); };
   document.getElementById('btn-back-login').onclick = ()=>{ showScreen('auth-screen'); };
   document.getElementById('btn-guest').onclick = ()=>{
-    localUser = {
-      id: 'guest-'+(Math.random()*1e8|0),
-      username: 'Guest'+(Math.random()*1e4|0),
-      guest: true,
-      point: 0, items:[]
-    };
+    localUser = createGuestUser();
     saveLocalUser(); updateMiniUser();
-    showScreen('main-menu'); notify('Chế độ khách! Mọi tiến trình sẽ mất nếu tắt trình duyệt');
+    showScreen('main-menu'); notify('Chế độ khách! (Tự xoá khi đóng tab)');
   };
   document.getElementById('login-form').onsubmit = function(e) {
     e.preventDefault();
     const u = document.getElementById('login-username').value.trim();
     const p = document.getElementById('login-password').value;
     if(!u) return notify('Tên trống!');
-    // fake: demo không backend, bỏ qua truy vấn!
-    localUser = { id:'user-'+u, username: u, guest: false, point: 100, items:[] };
+    localUser = { id:'user-'+u, userId: randomUserId(), username: u, guest: false, point: 100, items:[] };
     saveLocalUser(); updateMiniUser();
-    showScreen('main-menu'); notify('Đăng nhập demo thành công!');
+    showScreen('main-menu'); notify('Đăng nhập demo!');
   };
   document.getElementById('register-form').onsubmit = function(e) {
     e.preventDefault();
     const u = document.getElementById('register-username').value.trim();
     const p = document.getElementById('register-password').value;
-    if(!u||!p||p.length<4) return notify('Điền đủ tên & mật khẩu tối thiểu 4 ký tự!');
-    // fake: chỉ demo!
-    localUser = { id:'user-'+u, username: u, guest: false, point: 100, items:[] };
+    if(!u||!p||p.length<4) return notify('Nhập đủ tên & mật khẩu ≥4 ký tự!');
+    localUser = { id:'user-'+u, userId: randomUserId(), username: u, guest: false, point: 100, items:[] };
     saveLocalUser(); updateMiniUser();
-    showScreen('main-menu'); notify('Đăng ký tài khoản demo!');
+    showScreen('main-menu'); notify('Đăng ký OK!');
   };
   document.getElementById('btn-logout').onclick = ()=>{
-    localUser = {}; saveLocalUser(); updateMiniUser();
+    if(localUser.guest) sessionStorage.removeItem('rps-user');
+    else localStorage.removeItem('rps-user');
+    localUser = {}; updateMiniUser();
     showScreen('auth-screen');
   };
 }
 
-// ======== Main menu ===========
+// ==== Menu
 function initMenu() {
   document.getElementById('btn-start-bot').onclick = startBotMode;
   document.getElementById('btn-create-room').onclick = ()=>showScreen('room-create');
@@ -84,7 +116,7 @@ function initMenu() {
   document.getElementById('btn-profile').onclick = showProfileScreen;
 }
 
-// ======== Tạo/join phòng PVP ===========
+// ==== Room demo
 function initRoom() {
   document.getElementById('btn-do-create-room').onclick = ()=>{
     curRoomId = Math.random().toString(36).substr(2,6);
@@ -93,18 +125,18 @@ function initRoom() {
     document.getElementById('btn-copy-link').onclick = function() {
       navigator.clipboard.writeText(window.location.origin+'?room='+curRoomId); notify('Đã copy link!');
     };
-    setTimeout(()=>document.getElementById('room-waiting-status').textContent = "Sẵn sàng chơi! (Mô phỏng, không cần real socket)", 2000); // demo!
+    setTimeout(()=>document.getElementById('room-waiting-status').textContent = "Sẵn sàng chơi! (Mô phỏng)", 2000);
   };
   document.getElementById('btn-wait-cancel').onclick = ()=>showScreen('main-menu');
   document.getElementById('btn-do-join').onclick = ()=>{
     curRoomId = document.getElementById('join-room-id').value.trim();
     if(!curRoomId) return notify('Nhập mã phòng!');
-    notify('Đã vào phòng '+curRoomId+'. Trận đấu demo bắt đầu!');
+    notify('Đã vào phòng '+curRoomId+'. Bắt đầu demo trận!');
     startPvpGame();
   };
 }
 
-// ======== Game vs BOT ===========
+// ==== Game BOT
 function startBotMode() {
   curGameType = 'bot';
   gameSession = { me:0, op:0, round:1, total:3, battle:[], opName:'BOT' };
@@ -112,14 +144,14 @@ function startBotMode() {
   startGame();
 }
 
-// ======== Game PvP demo (không socket) ===========
+// ==== PvP demo
 function startPvpGame() {
   curGameType = 'pvp';
   gameSession = { me:0, op:0, round:1, total:3, battle:[], opName:'Đối thủ' };
   startGame();
 }
 
-// ======== GAME MAIN ===========
+// ==== Main game
 function startGame() {
   showScreen('game-screen'); renderGame();
   document.querySelectorAll('.choice-btn').forEach(btn=>{
@@ -130,38 +162,28 @@ function startGame() {
   document.getElementById('vs-title').textContent = `Bạn vs ${gameSession.opName}`;
   document.getElementById('round-result-msg').textContent = '';
 }
-
 function renderGame() {
   document.getElementById('you-score').textContent = gameSession.me;
   document.getElementById('op-score').textContent = gameSession.op;
   document.getElementById('round-info').textContent = `Ván ${gameSession.round}/${gameSession.total}`;
 }
-
 function playerMove(myChoice) {
   document.querySelectorAll('.choice-btn').forEach(btn => {
     btn.classList.toggle('selected', btn.dataset.choice === myChoice);
     btn.disabled = true;
   });
-  // Demo: đối thủ random move
   let opChoice = (curGameType ==='bot')
       ? ['rock','paper','scissors'][Math.random()*3|0]
       : ['rock','paper','scissors'][Math.random()*3|0];
-  setTimeout(()=>{
-    showResult(myChoice, opChoice);
-  }, 600);
+  setTimeout(()=>{ showResult(myChoice, opChoice); }, 600);
 }
-
 function showResult(my, op) {
   const map = { rock:'✊', paper:'✋', scissors:'✌️' };
   let result='';
   if(my===op) result='Hòa!';
   else if((my==='rock'&&op==='scissors')||(my==='scissors'&&op==='paper')||(my==='paper'&&op==='rock')) {
-    result='Bạn thắng!';
-    gameSession.me++;
-  } else {
-    result='Bạn thua!';
-    gameSession.op++;
-  }
+    result='Bạn thắng!'; gameSession.me++;
+  } else { result='Bạn thua!'; gameSession.op++; }
   gameSession.battle.push({my, op, result});
   document.getElementById('round-result-msg').textContent = `Bạn: ${map[my]}  – ${map[op]}  ${gameSession.opName}: ${result}`;
   renderGame();
@@ -176,7 +198,6 @@ function showResult(my, op) {
     }
   },1500);
 }
-
 function showFinalResult() {
   showScreen('game-result');
   let msg='';
@@ -192,22 +213,19 @@ function showFinalResult() {
     let item = ['Búa vàng','Bao may mắn','Kéo siêu tốc'][Math.random()*3|0];
     rewardInventory.push(item); localUser.items = rewardInventory;
     saveLocalUser(); updateMiniUser();
-    reward = `<div>🎁 Nhận được <b>${point}</b> điểm & vật phẩm: <span class="item-card">${item}</span></div>`;
+    reward = `<div>🎁 Nhận <b>${point}</b> điểm & vật phẩm: <span class="item-card">${item}</span></div>`;
   } else {
-    reward = `Bạn nhận được <b>10 điểm</b> an ủi!`;
+    reward = `Bạn nhận <b>10 điểm</b> an ủi!`;
     localUser.point = (localUser.point||0)+10; saveLocalUser(); updateMiniUser();
   }
   document.getElementById('reward-list').innerHTML = reward;
   document.getElementById('btn-back-menu').onclick = ()=>showScreen('main-menu');
-  document.getElementById('btn-play-again').onclick = ()=>{  // cho phép chơi lại nhanh
-    if(curGameType==='bot') startBotMode(); else startPvpGame();
-  };
+  document.getElementById('btn-play-again').onclick = ()=>{  if(curGameType==='bot') startBotMode(); else startPvpGame(); };
 }
 
-// ======== Hồ sơ cá nhân & Item ========
+// ==== Hồ sơ cá nhân & Đổi tên ====
 function showProfileScreen() {
   showScreen('profile-screen');
-   showScreen('profile-screen');
   document.getElementById('profile-block').innerHTML = `
     <div><b>Tên:</b> <input type="text" id="input-change-name" maxlength="16" value="${localUser.username || ''}">
       <button id="btn-do-change-name" class="btn-small">Đổi</button>
@@ -217,6 +235,11 @@ function showProfileScreen() {
     <div><b>Chế độ:</b> ${localUser.guest ? 'Khách' : 'Thành viên'}</div>
     <div><b>Số vật phẩm:</b> ${(localUser.items || []).length}</div>
   `;
+  let itemHtml = '';
+  rewardInventory = localUser.items||[];
+  for(const item of rewardInventory) { itemHtml += `<span class="item-card">${item}</span>`; }
+  document.getElementById('item-inventory').innerHTML = itemHtml || '<span>Chưa có vật phẩm nào!</span>';
+  document.getElementById('btn-profile-back').onclick = ()=>showScreen('main-menu');
   document.getElementById('input-change-name').onchange = function(e) {
     localUser.username = this.value.trim().slice(0, 16);
   }
@@ -225,22 +248,9 @@ function showProfileScreen() {
     saveLocalUser(); updateMiniUser();
     notify('Đã đổi tên thành công!');
   };
-  let block = '';
-  block += `<div><b>Tên:</b> ${localUser.username||'Chưa đăng nhập'}</div>`;
-  block += `<div><b>Điểm:</b> ${localUser.point||0}</div>`;
-  block += `<div><b>Chế độ:</b> ${localUser.guest ? 'Khách' : 'Thành viên'}</div>`;
-  block += `<div><b>Số vật phẩm:</b> ${(localUser.items||[]).length}</div>`;
-  document.getElementById('profile-block').innerHTML = block;
-  let itemHtml = '';
-  rewardInventory = localUser.items||[];
-  for(const item of rewardInventory) {
-    itemHtml += `<span class="item-card">${item}</span>`;
-  }
-  document.getElementById('item-inventory').innerHTML = itemHtml || '<span>Chưa có vật phẩm nào!</span>';
-  document.getElementById('btn-profile-back').onclick = ()=>showScreen('main-menu');
 }
 
-// ======== Start App ===========
+// ==== Start App
 window.addEventListener('DOMContentLoaded', ()=>{
   loadLocalUser();
   updateMiniUser();
@@ -249,17 +259,3 @@ window.addEventListener('DOMContentLoaded', ()=>{
   initRoom();
   document.getElementById('mini-username').addEventListener('click', showProfileScreen);
 });
-function randomUserId() {
-  // Return một số ngẫu nhiên 8 chữ số, check không trùng với local (demo)
-  return Date.now() + '' + (Math.random()*10|0)
-}
-function createGuestUser() {
-  return {
-    userId: randomUserId(),
-    id: null,
-    username: 'Guest' + (Math.random() * 1e4 | 0),
-    guest: true,
-    point: 0,
-    items: []
-  }
-}
