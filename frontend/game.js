@@ -312,4 +312,9 @@ window.addEventListener('DOMContentLoaded', ()=>{
 });
 
 // ==== Google Sign-In callback (nếu không dùng xóa đi) ==== //
-window.onGoogleSignIn = function(){};
+//window.onGoogleSignIn = function(){};
+function showScreen(id) {
+  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
+
