@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rock Paper Scissors Online</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loader"></div>
+        <p>Đang tải game...</p>
+    </div>
+
+    <!-- Main Container -->
+    <div id="gameContainer" class="game-container hidden">
+        
+        <!-- Header -->
+        <header class="game-header">
+            <div class="logo">
+                <h1>🎮 RPS Online</h1>
+            </div>
+            <div class="user-info">
+                <div class="coins">💰 <span id="userCoins">0</span></div>
+                <div class="profile" id="userProfile">
+                    <span id="username">Guest</span>
+                    <div class="avatar">👤</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Menu -->
+        <div id="mainMenu" class="menu-screen">
+            <div class="menu-card">
+                <h2>Chào mừng đến RPS Online!</h2>
+                <div class="menu-buttons">
+                    <button class="btn btn-primary" id="quickPlayBtn">
+                        🚀 Chơi nhanh với BOT
+                    </button>
+                    <button class="btn btn-secondary" id="createRoomBtn">
+                        🏠 Tạo phòng chơi
+                    </button>
+                    <button class="btn btn-secondary" id="joinRoomBtn">
+                        🚪 Vào phòng
+                    </button>
+                    <button class="btn btn-outline" id="loginBtn">
+                        👤 Đăng nhập/Đăng ký
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login Modal -->
+        <div id="loginModal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3>Đăng nhập/Đăng ký</h3>
+                <form id="authForm">
+                    <input type="text" id="usernameInput" placeholder="Tên người dùng" required>
+                    <input type="email" id="emailInput" placeholder="Email (tùy chọn)">
+                    <button type="submit" class="btn btn-primary">Xác nhận</button>
+                </form>
+                <p class="guest-option">
+                    <button id="playAsGuestBtn" class="btn btn-link">Chơi như khách</button>
+                </p>
+            </div>
+        </div>
+
+        <!-- Room Creation -->
+        <div id="roomCreation" class="screen hidden">
+            <div class="room-card">
+                <h3>Tạo phòng chơi</h3>
+                <div class="room-settings">
+                    <label>
+                        <input type="checkbox" id="privateRoom"> Phòng riêng tư
+                    </label>
+                    <label>
+                        Số ván thắng: 
+                        <select id="winCondition">
+                            <option value="1">1 ván</option>
+                            <option value="3" selected>3 ván</option>
+                            <option value="5">5 ván</option>
+                        </select>
+                    </label>
+                </div>
+                <button class="btn btn-primary" id="createRoomConfirm">Tạo phòng</button>
+                <button class="btn btn-outline" id="backToMenuBtn">Quay lại</button>
+            </div>
+        </div>
+
+        <!-- Waiting Room -->
+        <div id="waitingRoom" class="screen hidden">
+            <div class="waiting-card">
+                <h3>Đang chờ đối thủ...</h3>
+                <div class="room-info">
+                    <p>Mã phòng: <span id="roomCode">ABC123</span></p>
+                    <p>Link mời: <span id="inviteLink">game.com/join/ABC123</span></p>
+                </div>
+                <button class="btn btn-secondary" id="copyLinkBtn">📋 Copy link</button>
+                <button class="btn btn-outline" id="cancelRoomBtn">Hủy phòng</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen hidden">
+            <!-- Score Display -->
+            <div class="score-board">
+                <div class="player-score">
+                    <div class="player-info">
+                        <span class="player-name" id="player1Name">Bạn</span>
+                        <div class="score" id="player1Score">0</div>
+                    </div>
+                </div>
+                <div class="vs">VS</div>
+                <div class="player-score">
+                    <div class="player-info">
+                        <span class="player-name" id="player2Name">BOT</span>
+                        <div class="score" id="player2Score">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Arena -->
+            <div class="game-arena">
+                <div class="player-choice">
+                    <div class="choice-display" id="playerChoice">❓</div>
+                    <p>Lựa chọn của bạn</p>
+                </div>
+                <div class="battle-result">
+                    <div id="resultMessage" class="result-message">Chọn nước đi!</div>
+                    <div id="countdown" class="countdown hidden">3</div>
+                </div>
+                <div class="opponent-choice">
+                    <div class="choice-display" id="opponentChoice">❓</div>
+                    <p>Lựa chọn đối thủ</p>
+                </div>
+            </div>
+
+            <!-- Choice Buttons -->
+            <div class="choice-buttons">
+                <button class="choice-btn" data-choice="rock">
+                    <span class="choice-icon">🪨</span>
+                    <span class="choice-text">Búa</span>
+                </button>
+                <button class="choice-btn" data-choice="paper">
+                    <span class="choice-icon">📄</span>
+                    <span class="choice-text">Bao</span>
+                </button>
+                <button class="choice-btn" data-choice="scissors">
+                    <span class="choice-icon">✂️</span>
+                    <span class="choice-text">Kéo</span>
+                </button>
+            </div>
+
+            <!-- Game Status -->
+            <div class="game-status">
+                <div class="round-info">
+                    Ván <span id="currentRound">1</span>/<span id="totalRounds">3</span>
+                </div>
+                <button class="btn btn-outline btn-small" id="quitGameBtn">Thoát game</button>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="resultScreen" class="screen hidden">
+            <div class="result-card">
+                <div class="final-result">
+                    <h2 id="finalResultTitle">Bạn thắng!</h2>
+                    <div class="final-score">
+                        <span id="finalPlayerScore">3</span> - <span id="finalOpponentScore">1</span>
+                    </div>
+                </div>
+                
+                <!-- Rewards -->
+                <div class="rewards-section">
+                    <h3>🎁 Phần thưởng</h3>
+                    <div class="rewards-list" id="rewardsList">
+                        <div class="reward-item">
+                            <span class="reward-icon">💰</span>
+                            <span class="reward-text">+50 coins</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-buttons">
+                    <button class="btn btn-primary" id="playAgainBtn">Chơi lại</button>
+                    <button class="btn btn-outline" id="backToMenuBtn2">Menu chính</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory Modal -->
+        <div id="inventoryModal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3>🎒 Kho đồ của bạn</h3>
+                <div class="inventory-grid" id="inventoryGrid">
+                    <!-- Items will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification System -->
+        <div id="notifications" class="notifications-container"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
