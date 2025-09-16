@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="styles.css">
   <link href="https://fonts.googleapis.com/css?family=Quicksand:400,700&display=swap" rel="stylesheet">
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <!-- Google OAuth2 -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -27,12 +26,11 @@
   <div id="auth-screen" class="screen">
     <h2>Chào mừng đến RPS Online!</h2>
     <form id="login-form" class="auth-form">
-      <input type="text" id="login-username" maxlength="16" placeholder="Tên người dùng" autocomplete="username" required>
-      <input type="password" id="login-password" autocomplete="current-password" placeholder="Mật khẩu (tuỳ chọn)">
+      <input type="text" id="login-username" maxlength="30" minlength="4" placeholder="Tên đăng nhập" autocomplete="username" required>
+      <input type="password" id="login-password" autocomplete="current-password" placeholder="Mật khẩu" minlength="8" required>
       <button type="submit" class="btn-main">Đăng nhập</button>
       <button type="button" id="btn-register" class="btn-main btn-alt">Đăng ký mới</button>
     </form>
-    <!-- Google Sign-In -->
     <div style="margin:18px 0 2px 0">
       <div id="g_id_onload"
         data-client_id="YOUR-GOOGLE-OAUTH-CLIENT-ID.apps.googleusercontent.com"
@@ -50,8 +48,9 @@
   <div id="register-screen" class="screen hidden">
     <h3>Đăng ký tài khoản</h3>
     <form id="register-form" class="auth-form">
-      <input type="text" id="register-username" maxlength="16" placeholder="Tên người dùng" required>
-      <input type="password" id="register-password" minlength="4" placeholder="Mật khẩu" required>
+      <input type="text" id="register-username" maxlength="30" minlength="4" placeholder="Tên (4-30 ký tự, chỉ chữ/số)" required>
+      <input type="email" id="register-email" placeholder="Email hợp lệ" required>
+      <input type="password" id="register-password" minlength="8" placeholder="Mật khẩu (≥8 ký tự, gồm ký tự đặc biệt)" required>
       <button type="submit" class="btn-main">Tạo tài khoản</button>
       <button type="button" id="btn-back-login" class="btn-main btn-alt">Quay lại</button>
     </form>
@@ -122,6 +121,11 @@
   <div id="profile-screen" class="screen hidden">
     <h3>Hồ sơ cá nhân</h3>
     <div id="profile-block"></div>
+    <div>
+      <label>Ảnh đại diện mới:</label>
+      <input type="url" id="input-avatar-url" placeholder="Dán URL ảnh">
+      <button id="btn-upload-avatar" class="btn-small">Cập nhật</button>
+    </div>
     <h4 id="reward-title">Vật phẩm/Phần thưởng</h4>
     <div id="item-inventory"></div>
     <button id="btn-profile-back" class="btn-main btn-alt">Quay lại</button>
