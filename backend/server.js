@@ -10,10 +10,14 @@ const server = http.createServer(app);
 // CORS setup
 const io = socketIo(server, {
     cors: {
-        origin: "*",
+        origin: [
+            "https://rps-frontend-ljpd.onrender.com", 
+            "http://localhost:3000"
+        ],
         methods: ["GET", "POST"]
     }
 });
+
 
 app.use(cors());
 app.use(express.json());
