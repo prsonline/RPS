@@ -53,10 +53,14 @@ async function loginUser(username, password) {
   });
   const data = await res.json();
   if (data.error) { notify(data.error); return false; }
-  localStorage.setItem('rps-token', data.token);
+  // Đảm bảo mọi field đều có, bao gồm id & avatar nếu có
   window.localUser = {
-    id: data.id, username: data.username, point: data.point, guest: false,
-    avatar: data.avatar || '', token: data.token
+    id: data.id || data._id || '',        // hỗ trợ cả id hoặc _id
+    username: data.username || '',
+    point: data.point || 0,
+    guest: false,
+    avatar: data.avatar || '',
+    token: data.token
   };
   saveLocalUser();
   updateMiniUser();
@@ -76,6 +80,7 @@ async function changeUsername(newName) {
   saveLocalUser();
   updateMiniUser();
   notify('Đổi tên thành công!');
+  document.getElementById('input-change-name').value = localUser.username;
 }
 async function changeAvatar(newAvatarUrl) {
   const token = localStorage.getItem('rps-token');
@@ -87,14 +92,16 @@ async function changeAvatar(newAvatarUrl) {
   const data = await res.json();
   if(data.error) return notify(data.error);
   window.localUser.avatar = newAvatarUrl;
-  saveLocalUser(); updateMiniUser();
+  saveLocalUser(); 
+  updateMiniUser();
   notify('Đổi avatar thành công!');
+  // Không cần reload lại trang, mini header sẽ hiện avatar luôn
 }
 
 // ==== User trạng thái ==== //
 let localUser = {};
 function saveLocalUser() {
-  if(localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
+  if (localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
   else localStorage.setItem('rps-user', JSON.stringify(localUser));
 }
 function loadLocalUser() {
@@ -107,8 +114,10 @@ function updateMiniUser() {
   let text = localUser?.username ? `👑 ${localUser.username}` : '';
   if(localUser.avatar) text = `<img src="${localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${localUser.username}`;
   document.getElementById('mini-username').innerHTML = text;
-  document.getElementById('mini-point').textContent = typeof localUser.point !== 'undefined' ? `★ ${localUser.point}` : '';
-  document.getElementById('btn-logout').classList.toggle('hidden', !!localUser.guest);
+  document.getElementById('mini-point').textContent = (typeof localUser.point !== 'undefined' && localUser.point !== null) ? `★ ${localUser.point}` : '';
+  // Nút đăng xuất chỉ hiện khi user đã login (không phải guest và phải có username thực)
+  const showLogout = localUser && !localUser.guest && !!localUser.username;
+  document.getElementById('btn-logout').classList.toggle('hidden', !showLogout);
 }
 
 // ==== Socket.io trạng thái online ==== //
@@ -142,7 +151,10 @@ function initAuth() {
     if(!validateUsername(username)) return notify('Tên phải 4-30 ký tự, chỉ chữ/số!');
     if(!validatePassword(password)) return notify('Mật khẩu chưa đủ mạnh!');
     const ok = await loginUser(username, password);
-    if(ok) showScreen('main-menu');
+    if(ok) {
+      showScreen('main-menu'); 
+      updateMiniUser(); // đảm bảo luôn update lại giao diện mini sau login
+    }
   };
   document.getElementById('register-form').onsubmit = async function(e) {
     e.preventDefault();
