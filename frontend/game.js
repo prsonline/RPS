@@ -62,6 +62,7 @@ async function loginUser(username, password) {
     avatar: data.avatar || '',
     token: data.token
   };
+  console.log("===> Login OK", window.localUser);
   saveLocalUser();
   updateMiniUser();
   connectSocket();
