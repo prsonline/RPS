@@ -189,6 +189,7 @@ function initMenu() {
 // ==== Đổi tên, avatar ==== //
 function showProfileScreen() {
   showScreen('profile-screen');
+  console.log("===> Show Profile", localUser);
   document.getElementById('profile-block').innerHTML = `
     <div>
       <b>Tên:</b> 
