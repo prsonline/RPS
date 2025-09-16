@@ -1,7 +1,5 @@
-// ==== CONFIG BACKEND ====
-const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Sửa đúng backend của bạn nếu khác!
+const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // update nếu khác
 
-// ==== VALIDATORS ==== //
 function validateUsername(username) {
   return /^[a-zA-Z0-9]{4,30}$/.test(username);
 }
@@ -25,37 +23,53 @@ function notify(msg, timeout=2000) {
   setTimeout(()=>n.remove(), timeout);
 }
 
-// ==== localUser LƯU GLOBALLY TRÊN window (không bao giờ ghi đè bằng let/const localUser) ==== //
-window.localUser = {}; // luôn dùng window.localUser
+// localUser duy trì toàn cục trên window
+window.localUser = {};
 
 function saveLocalUser() {
-  if (window.localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(window.localUser));
-  else localStorage.setItem('rps-user', JSON.stringify(window.localUser));
+  localStorage.setItem('rps-user', JSON.stringify(window.localUser));
 }
 function loadLocalUser() {
-  let x = sessionStorage.getItem('rps-user') || localStorage.getItem('rps-user');
+  let x = localStorage.getItem('rps-user');
   if(x) try {window.localUser = JSON.parse(x);} catch{window.localUser = {};}
   if(!window.localUser || typeof window.localUser !== 'object') window.localUser = {};
   if(typeof window.localUser.point !== 'number') window.localUser.point = 0;
   if(!window.localUser.username) window.localUser.username = '';
   if(!window.localUser.items) window.localUser.items = [];
+  if(!window.localUser.token) window.localUser.token = '';
 }
 function updateMiniUser() {
   let text = window.localUser?.username ? `👑 ${window.localUser.username}` : '';
   if(window.localUser.avatar) text = `<img src="${window.localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${window.localUser.username}`;
   document.getElementById('mini-username').innerHTML = text;
   document.getElementById('mini-point').textContent = (typeof window.localUser.point === 'number') ? `★ ${window.localUser.point}` : '';
-  // Nút đăng xuất chỉ hiện khi user đã login (không phải guest và phải có username thực)
   const showLogout = window.localUser && !window.localUser.guest && !!window.localUser.username;
   document.getElementById('btn-logout').classList.toggle('hidden', !showLogout);
 }
 
-// ==== APIs kết nối backend ==== //
+// RESTORE profile from DB (gọi khi reload hoặc khi cần sync lại sau cộng điểm)
+async function reloadProfileFEFromDB() {
+  if (!window.localUser?.token) return;
+  const res = await fetch(BACKEND_URL+'/api/user/profile', {
+    method: 'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ token: window.localUser.token })
+  });
+  const data = await res.json();
+  if(data.error) { notify('Cần đăng nhập lại!'); return; }
+  window.localUser.username = data.username || '';
+  window.localUser.id = data.id || '';
+  window.localUser.point = (typeof data.point === 'number') ? data.point : 0;
+  window.localUser.avatar = data.avatar || '';
+  window.localUser.items = data.items || [];
+  saveLocalUser();
+  updateMiniUser();
+}
+
+// APIs
 async function registerUser(username, email, password) {
   try {
     const res = await fetch(BACKEND_URL + '/api/auth/register', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ username, email, password })
     });
     const data = await res.json();
@@ -66,13 +80,11 @@ async function registerUser(username, email, password) {
 }
 async function loginUser(username, password) {
   const res = await fetch(BACKEND_URL + '/api/auth/login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ username, password })
   });
   const data = await res.json();
   if (data.error) { notify(data.error); return false; }
-  // Lưu ĐẦY ĐỦ user info vào window.localUser
   window.localUser = {
     id: data.id || data._id || '',
     username: data.username || '',
@@ -96,28 +108,36 @@ async function changeUsername(newName) {
   });
   const data = await res.json();
   if(data.error) return notify(data.error);
-  window.localUser.username = newName;
-  saveLocalUser();
-  updateMiniUser();
+  await reloadProfileFEFromDB();
   notify('Đổi tên thành công!');
   document.getElementById('input-change-name').value = window.localUser.username;
 }
 async function changeAvatar(newAvatarUrl) {
   const token = window.localUser.token;
   const res = await fetch(BACKEND_URL + '/api/auth/avatar', {
-    method: 'POST',
-    headers:{'Content-Type':'application/json'},
+    method: 'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ token, avatar: newAvatarUrl })
   });
   const data = await res.json();
   if(data.error) return notify(data.error);
-  window.localUser.avatar = newAvatarUrl;
-  saveLocalUser(); 
-  updateMiniUser();
+  await reloadProfileFEFromDB();
   notify('Đổi avatar thành công!');
 }
+async function addPointToUser(addPoint) {
+  if (!window.localUser.guest && window.localUser.token && addPoint) {
+    const res = await fetch(BACKEND_URL + '/api/user/add-point', {
+      method: 'POST', headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ token: window.localUser.token, addPoint })
+    });
+    const data = await res.json();
+    if(data.success) {
+      window.localUser.point = data.point;
+      saveLocalUser(); updateMiniUser();
+    }
+  }
+}
 
-// ==== Socket.io trạng thái online ==== //
+// Socket.io online
 let socket = null;
 function connectSocket() {
   if (!window.localUser?.id) return;
@@ -130,7 +150,7 @@ function connectSocket() {
   });
 }
 
-// ==== Đăng ký / Đăng nhập / Guest ==== //
+// Đăng ký / Đăng nhập / Guest
 function initAuth() {
   showScreen('auth-screen');
   document.getElementById('btn-register').onclick = ()=> showScreen('register-screen');
@@ -149,6 +169,8 @@ function initAuth() {
     if(!validatePassword(password)) return notify('Mật khẩu chưa đủ mạnh!');
     const ok = await loginUser(username, password);
     if(ok) {
+      saveLocalUser();
+      await reloadProfileFEFromDB();
       showScreen('main-menu'); 
       updateMiniUser();
     }
@@ -165,14 +187,13 @@ function initAuth() {
     if (ok) showScreen('auth-screen');
   };
   document.getElementById('btn-logout').onclick = ()=>{
-    if(window.localUser.guest) sessionStorage.removeItem('rps-user');
-    else localStorage.removeItem('rps-user');
+    localStorage.removeItem('rps-user');
     window.localUser = {}; updateMiniUser();
     showScreen('auth-screen');
   };
 }
 
-// ==== Main menu, Profile, Avatar ==== //
+// Menu, Profile, Avatar
 function initMenu() {
   document.getElementById('btn-start-bot').onclick = startBotMode;
   document.getElementById('btn-create-room').onclick = ()=>showScreen('room-create');
@@ -181,16 +202,16 @@ function initMenu() {
   document.getElementById('btn-join-back').onclick = ()=>showScreen('main-menu');
   document.getElementById('btn-profile').onclick = showProfileScreen;
 }
-
-// ==== Đổi tên, avatar ==== //
+function showScreen(id) {
+  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
+  document.getElementById(id).classList.remove('hidden');
+}
 function showProfileScreen() {
   showScreen('profile-screen');
-  // lấy đúng window.localUser và không tạo biến cục bộ nào localUser ở đây!
   const u = window.localUser;
-  //console.log("===> Show Profile", u);
   document.getElementById('profile-block').innerHTML = `
     <div>
-      <b>Tên:</b> 
+      <b>Tên:</b>
       <input type="text" id="input-change-name" maxlength="30" minlength="4" value="${u.username || ''}">
       <button id="btn-do-change-name" class="btn-small">Đổi</button>
     </div>
@@ -218,7 +239,7 @@ function showProfileScreen() {
   };
 }
 
-// ==== GAME LOGIC (DEMO) ==== //
+// GAME LOGIC
 let curGameType = '', gameSession = {}, curRoomId = '', rewardInventory = [];
 function startBotMode() {
   curGameType = 'bot';
@@ -256,7 +277,8 @@ function playerMove(myChoice) {
       : ['rock','paper','scissors'][Math.random()*3|0];
   setTimeout(()=>{ showResult(myChoice, opChoice); }, 600);
 }
-function showResult(my, op) {
+// make showFinalResult async để chờ addPointToUser
+async function showResult(my, op) {
   const map = { rock:'✊', paper:'✋', scissors:'✌️' };
   let result='';
   if(my===op) result='Hòa!';
@@ -266,9 +288,9 @@ function showResult(my, op) {
   gameSession.battle.push({my, op, result});
   document.getElementById('round-result-msg').textContent = `Bạn: ${map[my]}  – ${map[op]}  ${gameSession.opName}: ${result}`;
   renderGame();
-  setTimeout(()=>{
+  setTimeout(async ()=>{
     if(gameSession.me > gameSession.total/2 || gameSession.op > gameSession.total/2 || gameSession.round===gameSession.total) {
-      showFinalResult();
+      await showFinalResult();
     } else {
       gameSession.round++;
       renderGame();
@@ -277,7 +299,8 @@ function showResult(my, op) {
     }
   },1500);
 }
-function showFinalResult() {
+
+async function showFinalResult() {
   showScreen('game-result');
   let msg='';
   if(gameSession.me>gameSession.op) msg='🏆 Bạn chiến thắng!';
@@ -288,33 +311,24 @@ function showFinalResult() {
   let reward='';
   if(gameSession.me>gameSession.op) {
     const point = 30+10*Math.random()|0;
-    window.localUser.point = (window.localUser.point||0) + point;
-    let item = ['Búa vàng','Bao may mắn','Kéo siêu tốc'][Math.random()*3|0];
-    rewardInventory.push(item); window.localUser.items = rewardInventory;
-    saveLocalUser(); updateMiniUser();
-    reward = `<div>🎁 Nhận <b>${point}</b> điểm & vật phẩm: <span class="item-card">${item}</span></div>`;
+    await addPointToUser(point);  // CỘNG POINT ĐỂ LƯU DB
+    reward = `<div>🎁 Nhận <b>${point}</b> điểm & vật phẩm!</div>`;
   } else {
+    await addPointToUser(10); // lưu điểm an ủi vào DB
     reward = `Bạn nhận <b>10 điểm</b> an ủi!`;
-    window.localUser.point = (window.localUser.point||0)+10; saveLocalUser(); updateMiniUser();
   }
+  await reloadProfileFEFromDB(); // luôn lấy lại profile mới nhất kể cả khi reload
   document.getElementById('reward-list').innerHTML = reward;
   document.getElementById('btn-back-menu').onclick = ()=>showScreen('main-menu');
   document.getElementById('btn-play-again').onclick = ()=>{  if(curGameType==='bot') startBotMode(); else startPvpGame(); };
 }
 
-// ==== KHỞI ĐỘNG APP ==== //
 window.addEventListener('DOMContentLoaded', ()=>{
   loadLocalUser();
   updateMiniUser();
+  if(window.localUser && window.localUser.token) reloadProfileFEFromDB();
   initAuth();
   initMenu();
   document.getElementById('mini-username').addEventListener('click', showProfileScreen);
 });
-
-// ==== Google Sign-In callback (nếu không dùng xóa đi) ==== //
-//window.onGoogleSignIn = function(){};
-function showScreen(id) {
-  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
-  document.getElementById(id).classList.remove('hidden');
-}
-
+window.onGoogleSignIn = function(){};
