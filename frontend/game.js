@@ -249,3 +249,17 @@ window.addEventListener('DOMContentLoaded', ()=>{
   initRoom();
   document.getElementById('mini-username').addEventListener('click', showProfileScreen);
 });
+function randomUserId() {
+  // Return một số ngẫu nhiên 8 chữ số, check không trùng với local (demo)
+  return Date.now() + '' + (Math.random()*10|0)
+}
+function createGuestUser() {
+  return {
+    userId: randomUserId(),
+    id: null,
+    username: 'Guest' + (Math.random() * 1e4 | 0),
+    guest: true,
+    point: 0,
+    items: []
+  }
+}
