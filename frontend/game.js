@@ -1,102 +1,150 @@
-const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Update đúng backend của bạn!
+const BACKEND_URL = 'https://rps-backend-pm3s.onrender.com'; // Thay đúng backend bạn deploy
 
-let socket;
-let localUser = {};
-let curRoomId = '';
-let curGameType = '';
-let gameSession = {};
-let rewardInventory = [];
-
-function showScreen(id) {
-  for(const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
-  document.getElementById(id).classList.remove('hidden');
+// ==== VALIDATORS ==== //
+function validateUsername(username) {
+  return /^[a-zA-Z0-9]{4,30}$/.test(username);
 }
-function notify(msg, timeout=2100) {
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+function validatePassword(password) {
+  return (
+    typeof password === 'string'
+    && password.length >= 8
+    && /[A-Z]/.test(password)
+    && /[a-z]/.test(password)
+    && /[0-9]/.test(password)
+    && /[^A-Za-z0-9]/.test(password)
+  );
+}
+function notify(msg, timeout=2400) {
   const n = document.createElement('div');
   n.className='notify-message'; n.innerHTML=msg;
   document.getElementById('notify').appendChild(n);
   setTimeout(()=>n.remove(), timeout);
+}
+
+//==== APIs để call backend ===//
+async function registerUser(username, email, password) {
+  try {
+    const res = await fetch(BACKEND_URL + '/api/auth/register', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, email, password })
+    });
+    const data = await res.json();
+    if(data.error) return notify(data.error), false;
+    notify('Đăng ký thành công!');
+    return true;
+  } catch (e) { notify('Có lỗi server!'); return false; }
+}
+async function loginUser(username, password) {
+  const res = await fetch(BACKEND_URL + '/api/auth/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ username, password })
+  });
+  const data = await res.json();
+  if (data.error) { notify(data.error); return false; }
+  localStorage.setItem('rps-token', data.token);
+  window.localUser = {
+    id: data.id, username: data.username, point: data.point, guest: false,
+    avatar: data.avatar || '', token: data.token
+  };
+  saveLocalUser();
+  updateMiniUser();
+  connectSocket();
+  return true;
+}
+async function changeUsername(newName) {
+  const token = localStorage.getItem('rps-token');
+  const res = await fetch(BACKEND_URL + '/api/user/change-name', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({token, newName})
+  });
+  const data = await res.json();
+  if(data.error) return notify(data.error);
+  localUser.username = newName;
+  saveLocalUser();
+  updateMiniUser();
+  notify('Đổi tên thành công!');
+}
+async function changeAvatar(newAvatarUrl) {
+  const token = localStorage.getItem('rps-token');
+  const res = await fetch(BACKEND_URL + '/api/auth/avatar', {
+    method: 'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ token, avatar: newAvatarUrl })
+  });
+  const data = await res.json();
+  if(data.error) return notify(data.error);
+  window.localUser.avatar = newAvatarUrl;
+  saveLocalUser(); updateMiniUser();
+  notify('Đổi avatar thành công!');
+}
+
+// ==== User trạng thái ==== //
+function saveLocalUser() {
+  if(localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
+  else localStorage.setItem('rps-user', JSON.stringify(localUser));
+}
+function loadLocalUser() {
+  let x = sessionStorage.getItem('rps-user') || localStorage.getItem('rps-user');
+  if(x) try {localUser = JSON.parse(x);} catch{} else localUser = {};
+  if(!localUser.point) localUser.point = 0;
+  if(!localUser.username) localUser.username = '';
 }
 function updateMiniUser() {
   let text = localUser?.username ? `👑 ${localUser.username}` : '';
   if(localUser.avatar) text = `<img src="${localUser.avatar}" style="width:27px;border-radius:36px;vertical-align:middle"> ${localUser.username}`;
   document.getElementById('mini-username').innerHTML = text;
   document.getElementById('mini-point').textContent = typeof localUser.point !== 'undefined' ? `★ ${localUser.point}` : '';
-  document.getElementById('btn-logout').classList.toggle('hidden', !localUser || localUser.guest);
+  document.getElementById('btn-logout').classList.toggle('hidden', localUser.guest);
 }
 
-function saveLocalUser() {
-  if(localUser.guest) sessionStorage.setItem('rps-user', JSON.stringify(localUser));
-  else localStorage.setItem('rps-user', JSON.stringify(localUser));
-}
-function loadLocalUser() {
-  let x = sessionStorage.getItem('rps-user');
-  if (!x) x = localStorage.getItem('rps-user');
-  if(x) try { localUser = JSON.parse(x); } catch{} else localUser = {};
-  if(!localUser.point) localUser.point = 0;
-  if(!localUser.userId) localUser.userId = randomUserId();
-  rewardInventory = localUser.items || [];
-}
-function randomUserId() {
-  return (Date.now() + '' + (Math.random()*1e6|0)).slice(0, 10);
+// ==== Socket.io trạng thái online ==== //
+function connectSocket() {
+  if (!window.localUser?.id) return;
+  if (window.socket) window.socket.disconnect();
+  window.socket = io(BACKEND_URL, {transports:['websocket','polling']});
+  socket = window.socket;
+  socket.emit('user-online', { userId: localUser.id });
+  window.addEventListener('beforeunload', ()=>{
+    socket.emit('user-offline', { userId: localUser.id });
+  });
 }
 
-function createGuestUser() {
-  return {
-    userId: randomUserId(),
-    id: null,
-    username: 'Guest' + (Math.random() * 1e4 | 0),
-    guest: true,
-    point: 0,
-    items: []
-  }
-}
-
-// ==== Google OAuth2 Sign in Handler
-window.onGoogleSignIn = function(response) {
-  const payload = JSON.parse(atob(response.credential.split('.')[1]));
-  localUser = {
-    id: 'gg-' + payload.sub,
-    userId: payload.sub,
-    username: payload.name,
-    email: payload.email,
-    avatar: payload.picture,
-    guest: false,
-    point: 100,
-    items: []
-  };
-  saveLocalUser(); updateMiniUser();
-  showScreen('main-menu');
-  notify('Đăng nhập Gmail thành công!');
-};
-
-// ==== Đăng ký/Đăng nhập & Guest
+// ==== Đăng ký / Đăng nhập / Guest ==== //
 function initAuth() {
   showScreen('auth-screen');
-  document.getElementById('btn-register').onclick = ()=>{ showScreen('register-screen'); };
-  document.getElementById('btn-back-login').onclick = ()=>{ showScreen('auth-screen'); };
+  document.getElementById('btn-register').onclick = ()=> showScreen('register-screen');
+  document.getElementById('btn-back-login').onclick = ()=> showScreen('auth-screen');
   document.getElementById('btn-guest').onclick = ()=>{
-    localUser = createGuestUser();
+    localUser = { id:'guest'+(Math.random()*1e5|0), username: 'Guest'+(Math.random()*1e4|0), guest: true, point: 0, items: [] };
     saveLocalUser(); updateMiniUser();
-    showScreen('main-menu'); notify('Chế độ khách! (Tự xoá khi đóng tab)');
+    showScreen('main-menu');
+    notify('Chơi với tư cách khách (tạm thời)');
   };
-  document.getElementById('login-form').onsubmit = function(e) {
+  document.getElementById('login-form').onsubmit = async function(e) {
     e.preventDefault();
-    const u = document.getElementById('login-username').value.trim();
-    const p = document.getElementById('login-password').value;
-    if(!u) return notify('Tên trống!');
-    localUser = { id:'user-'+u, userId: randomUserId(), username: u, guest: false, point: 100, items:[] };
-    saveLocalUser(); updateMiniUser();
-    showScreen('main-menu'); notify('Đăng nhập demo!');
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    if(!validateUsername(username)) return notify('Tên phải 4-30 ký tự, chỉ chữ/số!');
+    if(!validatePassword(password)) return notify('Mật khẩu chưa đủ mạnh!');
+    const ok = await loginUser(username, password);
+    if(ok) showScreen('main-menu');
   };
-  document.getElementById('register-form').onsubmit = function(e) {
+  document.getElementById('register-form').onsubmit = async function(e) {
     e.preventDefault();
-    const u = document.getElementById('register-username').value.trim();
-    const p = document.getElementById('register-password').value;
-    if(!u||!p||p.length<4) return notify('Nhập đủ tên & mật khẩu ≥4 ký tự!');
-    localUser = { id:'user-'+u, userId: randomUserId(), username: u, guest: false, point: 100, items:[] };
-    saveLocalUser(); updateMiniUser();
-    showScreen('main-menu'); notify('Đăng ký OK!');
+    const username = document.getElementById('register-username').value.trim();
+    const email = document.getElementById('register-email').value.trim();
+    const password = document.getElementById('register-password').value;
+    if(!validateUsername(username)) return notify('Tên phải từ 4-30 ký tự, chỉ chữ số!');
+    if(!validateEmail(email)) return notify('Email không hợp lệ!');
+    if(!validatePassword(password)) return notify('Mật khẩu yếu: tối thiểu 8 ký tự, hoa, thường, số và ký tự đặc biệt!');
+    const ok = await registerUser(username, email, password);
+    if (ok) showScreen('auth-screen');
   };
   document.getElementById('btn-logout').onclick = ()=>{
     if(localUser.guest) sessionStorage.removeItem('rps-user');
@@ -106,7 +154,7 @@ function initAuth() {
   };
 }
 
-// ==== Menu
+// ==== Main menu, Profile, Avatar ==== //
 function initMenu() {
   document.getElementById('btn-start-bot').onclick = startBotMode;
   document.getElementById('btn-create-room').onclick = ()=>showScreen('room-create');
@@ -116,146 +164,47 @@ function initMenu() {
   document.getElementById('btn-profile').onclick = showProfileScreen;
 }
 
-// ==== Room demo
-function initRoom() {
-  document.getElementById('btn-do-create-room').onclick = ()=>{
-    curRoomId = Math.random().toString(36).substr(2,6);
-    showScreen('wait-room');
-    document.getElementById('roomLinkDisplay').innerHTML = `<b>Link:</b> <input id="auto-link" style="width:90%" readonly value="${window.location.origin+'?room='+curRoomId}" /> <br><b>Mã phòng:</b> <span id="auto-code">${curRoomId}</span>`;
-    document.getElementById('btn-copy-link').onclick = function() {
-      navigator.clipboard.writeText(window.location.origin+'?room='+curRoomId); notify('Đã copy link!');
-    };
-    setTimeout(()=>document.getElementById('room-waiting-status').textContent = "Sẵn sàng chơi! (Mô phỏng)", 2000);
-  };
-  document.getElementById('btn-wait-cancel').onclick = ()=>showScreen('main-menu');
-  document.getElementById('btn-do-join').onclick = ()=>{
-    curRoomId = document.getElementById('join-room-id').value.trim();
-    if(!curRoomId) return notify('Nhập mã phòng!');
-    notify('Đã vào phòng '+curRoomId+'. Bắt đầu demo trận!');
-    startPvpGame();
-  };
-}
-
-// ==== Game BOT
-function startBotMode() {
-  curGameType = 'bot';
-  gameSession = { me:0, op:0, round:1, total:3, battle:[], opName:'BOT' };
-  notify('Đang chơi với máy!');
-  startGame();
-}
-
-// ==== PvP demo
-function startPvpGame() {
-  curGameType = 'pvp';
-  gameSession = { me:0, op:0, round:1, total:3, battle:[], opName:'Đối thủ' };
-  startGame();
-}
-
-// ==== Main game
-function startGame() {
-  showScreen('game-screen'); renderGame();
-  document.querySelectorAll('.choice-btn').forEach(btn=>{
-    btn.disabled = false; btn.classList.remove('selected');
-    btn.onclick = ()=>playerMove(btn.dataset.choice);
-  });
-  document.getElementById('btn-leave-game').onclick = ()=>showScreen('main-menu');
-  document.getElementById('vs-title').textContent = `Bạn vs ${gameSession.opName}`;
-  document.getElementById('round-result-msg').textContent = '';
-}
-function renderGame() {
-  document.getElementById('you-score').textContent = gameSession.me;
-  document.getElementById('op-score').textContent = gameSession.op;
-  document.getElementById('round-info').textContent = `Ván ${gameSession.round}/${gameSession.total}`;
-}
-function playerMove(myChoice) {
-  document.querySelectorAll('.choice-btn').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.choice === myChoice);
-    btn.disabled = true;
-  });
-  let opChoice = (curGameType ==='bot')
-      ? ['rock','paper','scissors'][Math.random()*3|0]
-      : ['rock','paper','scissors'][Math.random()*3|0];
-  setTimeout(()=>{ showResult(myChoice, opChoice); }, 600);
-}
-function showResult(my, op) {
-  const map = { rock:'✊', paper:'✋', scissors:'✌️' };
-  let result='';
-  if(my===op) result='Hòa!';
-  else if((my==='rock'&&op==='scissors')||(my==='scissors'&&op==='paper')||(my==='paper'&&op==='rock')) {
-    result='Bạn thắng!'; gameSession.me++;
-  } else { result='Bạn thua!'; gameSession.op++; }
-  gameSession.battle.push({my, op, result});
-  document.getElementById('round-result-msg').textContent = `Bạn: ${map[my]}  – ${map[op]}  ${gameSession.opName}: ${result}`;
-  renderGame();
-  setTimeout(()=>{
-    if(gameSession.me > gameSession.total/2 || gameSession.op > gameSession.total/2 || gameSession.round===gameSession.total) {
-      showFinalResult();
-    } else {
-      gameSession.round++;
-      renderGame();
-      document.getElementById('round-result-msg').textContent='';
-      document.querySelectorAll('.choice-btn').forEach(btn=>{ btn.disabled = false; btn.classList.remove('selected'); });
-    }
-  },1500);
-}
-function showFinalResult() {
-  showScreen('game-result');
-  let msg='';
-  if(gameSession.me>gameSession.op) msg='🏆 Bạn chiến thắng!';
-  else if(gameSession.op>gameSession.me) msg='😢 Thua cuộc!';
-  else msg='🤝 Hoà!';
-  document.getElementById('game-final-title').textContent = msg;
-  document.getElementById('game-final-score').textContent = `Tỷ số: ${gameSession.me} - ${gameSession.op}`;
-  let reward='';
-  if(gameSession.me>gameSession.op) {
-    const point = 30+10*Math.random()|0;
-    localUser.point = (localUser.point||0) + point;
-    let item = ['Búa vàng','Bao may mắn','Kéo siêu tốc'][Math.random()*3|0];
-    rewardInventory.push(item); localUser.items = rewardInventory;
-    saveLocalUser(); updateMiniUser();
-    reward = `<div>🎁 Nhận <b>${point}</b> điểm & vật phẩm: <span class="item-card">${item}</span></div>`;
-  } else {
-    reward = `Bạn nhận <b>10 điểm</b> an ủi!`;
-    localUser.point = (localUser.point||0)+10; saveLocalUser(); updateMiniUser();
-  }
-  document.getElementById('reward-list').innerHTML = reward;
-  document.getElementById('btn-back-menu').onclick = ()=>showScreen('main-menu');
-  document.getElementById('btn-play-again').onclick = ()=>{  if(curGameType==='bot') startBotMode(); else startPvpGame(); };
-}
-
-// ==== Hồ sơ cá nhân & Đổi tên ====
+// ==== Đổi tên/Avatar ==== //
 function showProfileScreen() {
   showScreen('profile-screen');
   document.getElementById('profile-block').innerHTML = `
-    <div><b>Tên:</b> <input type="text" id="input-change-name" maxlength="16" value="${localUser.username || ''}">
+    <div>
+      <b>Tên:</b> 
+      <input type="text" id="input-change-name" maxlength="30" minlength="4" value="${localUser.username || ''}">
       <button id="btn-do-change-name" class="btn-small">Đổi</button>
     </div>
-    <div><b>ID:</b> <span id="profile-user-id">${localUser.userId || localUser.id}</span></div>
+    <div><b>ID:</b> <span id="profile-user-id">${localUser.id || ''}</span></div>
     <div><b>Điểm:</b> ${localUser.point || 0}</div>
     <div><b>Chế độ:</b> ${localUser.guest ? 'Khách' : 'Thành viên'}</div>
     <div><b>Số vật phẩm:</b> ${(localUser.items || []).length}</div>
   `;
-  let itemHtml = '';
-  rewardInventory = localUser.items||[];
-  for(const item of rewardInventory) { itemHtml += `<span class="item-card">${item}</span>`; }
+  let itemHtml = '', rewardInventory = localUser.items||[];
+  for(const item of rewardInventory) itemHtml += `<span class="item-card">${item}</span>`;
   document.getElementById('item-inventory').innerHTML = itemHtml || '<span>Chưa có vật phẩm nào!</span>';
   document.getElementById('btn-profile-back').onclick = ()=>showScreen('main-menu');
-  document.getElementById('input-change-name').onchange = function(e) {
-    localUser.username = this.value.trim().slice(0, 16);
-  }
-  document.getElementById('btn-do-change-name').onclick = function() {
-    localUser.username = document.getElementById('input-change-name').value.trim().slice(0, 16) || localUser.username;
-    saveLocalUser(); updateMiniUser();
-    notify('Đã đổi tên thành công!');
+
+  document.getElementById('btn-do-change-name').onclick = async function() {
+    const newName = document.getElementById('input-change-name').value.trim();
+    if (!validateUsername(newName)) return notify('Tên: 4-30 ký tự và chỉ chữ số!');
+    await changeUsername(newName);
+    document.getElementById('input-change-name').value = localUser.username;
+  };
+  document.getElementById('btn-upload-avatar').onclick = async function() {
+    const url = document.getElementById('input-avatar-url').value.trim();
+    if (!/^https?:\/\//.test(url)) return notify('Phải là URL ảnh hợp lệ!');
+    await changeAvatar(url);
+    document.getElementById('input-avatar-url').value = '';
   };
 }
 
-// ==== Start App
+// ==== Các phần chơi game, tạo phòng, PvP, Reward... giữ logic cũ như bản trước ==== //
+// ... Bạn giữ nguyên mã startBotMode, startPvpGame, startGame, renderGame, playerMove ... như phiên bản đã gửi trước.
+
 window.addEventListener('DOMContentLoaded', ()=>{
   loadLocalUser();
   updateMiniUser();
   initAuth();
   initMenu();
-  initRoom();
+  // ... các sự kiện khởi tạo phòng, game còn lại ...
   document.getElementById('mini-username').addEventListener('click', showProfileScreen);
 });
