@@ -187,7 +187,7 @@ function showProfileScreen() {
   showScreen('profile-screen');
   // lấy đúng window.localUser và không tạo biến cục bộ nào localUser ở đây!
   const u = window.localUser;
-  console.log("===> Show Profile", u);
+  //console.log("===> Show Profile", u);
   document.getElementById('profile-block').innerHTML = `
     <div>
       <b>Tên:</b> 
