@@ -1,20 +1,123 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RPS Online Test</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPS Online Game</title>
+  <meta name="description" content="Game kéo búa bao online 2 người hoặc với máy, nhẹ, realtime điểm thưởng!">
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css?family=Quicksand:400,700&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>🎮 RPS Online</h1>
-        <div id="status">Đang kết nối...</div>
-        <button id="testBtn" disabled>Test Connection</button>
-        <div id="messages"></div>
-    </div>
+<div id="app" class="container">
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="game.js"></script>
+  <!-- HEADER -->
+  <header class="app-header">
+    <span class="logo">✊✋✌️ RPS Online</span>
+    <div class="user-mini">
+      <span id="mini-username"></span>
+      <span id="mini-point"></span>
+      <button id="btn-logout" class="btn-small hidden">Đăng xuất</button>
+    </div>
+  </header>
+
+  <!-- AUTH SCREEN -->
+  <div id="auth-screen" class="screen">
+    <h2>Chào mừng đến RPS Online!</h2>
+    <form id="login-form" class="auth-form">
+      <input type="text" id="login-username" maxlength="16" placeholder="Tên người dùng" autocomplete="username" required>
+      <input type="password" id="login-password" autocomplete="current-password" placeholder="Mật khẩu (tuỳ chọn)">
+      <button type="submit" class="btn-main">Đăng nhập</button>
+      <button type="button" id="btn-register" class="btn-main btn-alt">Đăng ký mới</button>
+    </form>
+    <button id="btn-guest" class="btn-main btn-guest">Chơi ngay không cần tài khoản</button>
+  </div>
+
+  <!-- REGISTER SCREEN -->
+  <div id="register-screen" class="screen hidden">
+    <h3>Đăng ký tài khoản</h3>
+    <form id="register-form" class="auth-form">
+      <input type="text" id="register-username" maxlength="16" placeholder="Tên người dùng" required>
+      <input type="password" id="register-password" minlength="4" placeholder="Mật khẩu" required>
+      <button type="submit" class="btn-main">Tạo tài khoản</button>
+      <button type="button" id="btn-back-login" class="btn-main btn-alt">Quay lại</button>
+    </form>
+  </div>
+
+  <!-- MAIN MENU -->
+  <div id="main-menu" class="screen hidden">
+    <h2>Menu chính</h2>
+    <button id="btn-start-bot" class="btn-main">🤖 Chơi với máy</button>
+    <button id="btn-create-room" class="btn-main">👫 Tạo phòng PvP</button>
+    <button id="btn-join-room" class="btn-main btn-alt">🔗 Vào phòng qua link/mã</button>
+    <button id="btn-profile" class="btn-main btn-alt">👤 Hồ sơ cá nhân</button>
+  </div>
+
+  <!-- CREATE ROOM -->
+  <div id="room-create" class="screen hidden">
+    <h3>Tạo phòng PvP (2 người)</h3>
+    <button id="btn-do-create-room" class="btn-main">Tạo phòng</button>
+    <button id="btn-room-back" class="btn-main btn-alt">Quay lại</button>
+  </div>
+
+  <!-- WAITING ROOM -->
+  <div id="wait-room" class="screen hidden">
+    <h4>Chia sẻ link/mã cho bạn bè</h4>
+    <div id="roomLinkDisplay"></div>
+    <button id="btn-copy-link" class="btn-main">Copy link</button>
+    <div id="room-waiting-status">Đang chờ người chơi...</div>
+    <button id="btn-wait-cancel" class="btn-main btn-alt">Huỷ phòng</button>
+  </div>
+
+  <!-- JOIN ROOM -->
+  <div id="room-join" class="screen hidden">
+    <h4>Nhập mã/phòng để vào</h4>
+    <input type="text" id="join-room-id" maxlength="16" placeholder="Nhập mã phòng..." required>
+    <button id="btn-do-join" class="btn-main">Vào phòng</button>
+    <button id="btn-join-back" class="btn-main btn-alt">Quay lại</button>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen hidden">
+    <div class="vs-title" id="vs-title"></div>
+    <div class="score-bar">
+      <div><b>Bạn</b>: <span id="you-score">0</span></div>
+      <div><b>Đối thủ</b>: <span id="op-score">0</span></div>
+    </div>
+    <div class="round-result" id="round-result-msg"></div>
+    <div class="choice-bar">
+      <button class="choice-btn" data-choice="rock">✊<br>Búa</button>
+      <button class="choice-btn" data-choice="paper">✋<br>Bao</button>
+      <button class="choice-btn" data-choice="scissors">✌️<br>Kéo</button>
+    </div>
+    <div class="game-bottom">
+      <span id="round-info"></span>
+      <button id="btn-leave-game" class="btn-main btn-alt">Thoát</button>
+    </div>
+  </div>
+
+  <!-- GAME RESULT/REWARD -->
+  <div id="game-result" class="screen hidden">
+    <h3 id="game-final-title"></h3>
+    <div id="game-final-score"></div>
+    <div id="reward-list"></div>
+    <button id="btn-play-again" class="btn-main">Chơi lại</button>
+    <button id="btn-back-menu" class="btn-main btn-alt">Menu chính</button>
+  </div>
+
+  <!-- PROFILE/REWARD -->
+  <div id="profile-screen" class="screen hidden">
+    <h3>Hồ sơ cá nhân</h3>
+    <div id="profile-block"></div>
+    <h4 id="reward-title">Vật phẩm/Phần thưởng</h4>
+    <div id="item-inventory"></div>
+    <button id="btn-profile-back" class="btn-main btn-alt">Quay lại</button>
+  </div>
+
+  <!-- NOTIFY -->
+  <div id="notify"></div>
+</div>
+<script src="game.js"></script>
 </body>
 </html>
